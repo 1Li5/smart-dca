@@ -27,30 +27,33 @@ export function getSql() {
   return _sql;
 }
 
-const SCHEMA_SQL = `
+const SCHEMA_USERS = `
   CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
+  )
+`;
+
+const SCHEMA_USER_DATA = `
   CREATE TABLE IF NOT EXISTS user_data (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     payload JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
+  )
 `;
 
 /**
  * 幂等初始化表结构。多次调用安全。
+ * neon v1.x 的 prepared statement 一次只接受一条 SQL，所以拆成两条独立调用。
  */
 export async function ensureSchema() {
   if (_ready) return _ready;
   _ready = (async () => {
     const sql = getSql();
-    // 多条 DDL 用字符串传入；必须走 .query() 因为 neon() v1.x 不再支持
-    // 直接把多语句 SQL 当 tagged template 的字符串部分。
-    await sql.query(SCHEMA_SQL);
+    await sql.query(SCHEMA_USERS);
+    await sql.query(SCHEMA_USER_DATA);
   })();
   return _ready;
 }
