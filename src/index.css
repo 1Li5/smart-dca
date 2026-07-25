@@ -1,0 +1,308 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 等宽数字：让金额、点位对齐不跳动 */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 可编辑表格单元格：输入框融入单元格 */
+.cell-input {
+  width: 100%;
+}
+.cell-input .ant-input-number,
+.cell-input .ant-input,
+.cell-input .ant-select {
+  width: 100%;
+}
+.cell-input .ant-input-number-affix-wrapper {
+  width: 100%;
+}
+
+/* 结果表数字列右对齐 */
+.num-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ 主题变量（供自定义 CSS 取色，AntD 组件由 ConfigProvider 控制） ============ */
+.theme-light {
+  --bg: #f0f2f5;
+  --panel: #ffffff;
+  --border: #e5e7eb;
+  --text: rgba(0, 0, 0, 0.88);
+  --text-2: rgba(0, 0, 0, 0.55);
+  --tabs-bg: #f0f2f5;
+  --hover: rgba(0, 0, 0, 0.03);
+}
+.theme-dark {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: rgba(255, 255, 255, 0.88);
+  --text-2: rgba(255, 255, 255, 0.6);
+  --tabs-bg: #0d1117;
+  --hover: rgba(255, 255, 255, 0.04);
+}
+
+/* ============ 顶部栏 ============ */
+.app-header-wrap {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.app-header {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #1668dc, #2f54eb);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-shadow: 0 2px 6px rgba(22, 104, 220, 0.35);
+}
+.brand-sub {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.app-actions {
+  flex: 0 0 auto;
+}
+
+/* ============ 内容容器 ============ */
+.app-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 20px 56px;
+  width: 100%;
+}
+.tabs-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--tabs-bg);
+  margin: 0 -20px 4px;
+  padding: 6px 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+.card-tag {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* ============ 参数设置 ============ */
+.gs-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field-label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.tier-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--hover);
+}
+.tier-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text);
+}
+.tier-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* ============ 结果表 ============ */
+.num-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  display: block;
+}
+.num-cell.strong {
+  font-weight: 700;
+  font-size: 14px;
+}
+.err {
+  color: #cf1322;
+  font-weight: 600;
+  font-size: 12px;
+  margin-left: 6px;
+}
+.summary-row {
+  background: var(--hover);
+}
+.summary-row td {
+  font-weight: 700;
+}
+.warn-box {
+  margin-top: 12px;
+}
+.result-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+.compare-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* ============ 介绍页 ============ */
+.intro-hero {
+  background: linear-gradient(135deg, rgba(22, 104, 220, 0.08), rgba(47, 84, 235, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+}
+.intro-stats {
+  margin-top: 4px;
+}
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.stat-n {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1668dc;
+  line-height: 1.1;
+}
+.stat-l {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.intro-cards {
+  margin-top: 4px;
+}
+.intro-card {
+  height: 100%;
+}
+.intro-card .ant-card-body {
+  display: flex;
+  flex-direction: column;
+}
+.intro-block {
+  margin-top: 10px;
+}
+.intro-label {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.intro-label.pros {
+  color: #389e0d;
+}
+.intro-label.cons {
+  color: #cf1322;
+}
+.intro-list {
+  margin: 0;
+  padding-left: 4px;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text);
+}
+.intro-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+.ic-pros {
+  color: #389e0d;
+  margin-top: 3px;
+}
+.ic-cons {
+  color: #cf1322;
+  margin-top: 3px;
+}
+.intro-scenario {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: var(--hover);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* ============ 移动端 ============ */
+@media (max-width: 720px) {
+  .app-content {
+    padding: 12px 10px 48px !important;
+  }
+  .app-header {
+    padding: 10px 12px !important;
+    flex-wrap: wrap;
+  }
+  .app-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .tabs-sticky {
+    margin: 0 -10px;
+    padding: 6px 10px 0;
+  }
+  .intro-hero {
+    padding: 16px;
+  }
+  .brand-sub {
+    display: none;
+  }
+}

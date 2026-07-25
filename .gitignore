@@ -1,0 +1,20 @@
+# ===== Dependencies =====
+node_modules/
+
+# ===== Build output =====
+dist/
+dist-ssr/
+
+# ===== Local env (real secrets, never commit) =====
+.env
+.env.*
+!.env.example
+
+# ===== Vercel build cache =====
+.vercel/
+
+# ===== Unrelated leftover (other project's files) =====
+dca-30mma-website/
+
+# ===== Abandoned SCF backend (superseded by api/ for Vercel) =====
+server/
