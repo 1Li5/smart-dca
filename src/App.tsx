@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react';
-import { ConfigProvider, Layout, Tabs, App as AntApp } from 'antd';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ConfigProvider, Layout, Tabs, App as AntApp, Modal } from 'antd';
 import { getThemeConfig } from './theme';
-import { STRATEGIES } from './lib/defaults';
+import { DEFAULT_STATE, STRATEGIES } from './lib/defaults';
 import { loadState, saveState, resetState } from './lib/storage';
 import { runStrategy, type AppState } from './lib/calc';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import { useCloudSync } from './hooks/useCloudSync';
+import { fetchRemoteData } from './lib/auth';
+import { extractSyncPayload, applySyncPayload } from './lib/syncSlice';
 import AppHeader from './components/AppHeader';
 import IntroPage from './components/IntroPage';
 import StrategyView from './components/StrategyView';
+import AuthModal from './components/AuthModal';
+import MigrationDialog from './components/MigrationDialog';
+import SyncStatusBadge from './components/SyncStatus';
 
 const { Content } = Layout;
 
@@ -40,6 +47,15 @@ function makeAsset() {
   };
 }
 
+/** 简单深比较，足够判断"本地还是不是默认值" */
+function isDefaultLike(state: AppState): boolean {
+  try {
+    return JSON.stringify(state) === JSON.stringify(DEFAULT_STATE);
+  } catch {
+    return false;
+  }
+}
+
 function Shell({
   state,
   setState,
@@ -48,10 +64,71 @@ function Shell({
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }) {
   const { message } = AntApp.useApp();
+  const { user, logout } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<'login' | 'register'>('login');
+  const [migration, setMigration] = useState<{
+    open: boolean;
+    cloudPayload: any;
+    cloudUpdatedAt: string | null;
+    localAssetCount: number;
+  } | null>(null);
+  const [migrationResolved, setMigrationResolved] = useState(true);
+
   const mode = state.theme;
   const active = state.activeStrategy;
   const result = active !== 'intro' ? runStrategy(active, state) : null;
   const copyText = result ? result.copyLines.join('\n') : '';
+
+  // 上云：登录后自动防抖同步（受 migrationResolved 门控）
+  const sync = useCloudSync(user, extractSyncPayload(state), migrationResolved);
+
+  // 登录后处理云端数据拉取 / 迁移
+  useEffect(() => {
+    if (!user) {
+      setMigration(null);
+      setMigrationResolved(true); // 游客模式不需要门控
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await fetchRemoteData();
+        if (cancelled) return;
+        if (remote.payload == null) {
+          // 云端无数据：直接把当前 local 当作"用户数据"上传
+          setMigration(null);
+          setMigrationResolved(true);
+          await sync.syncNow();
+        } else {
+          // 云端有数据：判断是否需要弹迁移框
+          if (isDefaultLike(state)) {
+            // 本地是默认值：静默下载云端
+            setState((prev) => applySyncPayload(prev, remote.payload as any));
+            setMigration(null);
+            setMigrationResolved(true);
+          } else {
+            // 本地有用户数据：弹迁移框
+            setMigration({
+              open: true,
+              cloudPayload: remote.payload,
+              cloudUpdatedAt: remote.updatedAt,
+              localAssetCount: state.assets?.length || 0,
+            });
+            setMigrationResolved(false);
+          }
+        }
+      } catch (err) {
+        // 拉取失败：当作"云端无数据"处理，让用户继续
+        message.warning('云端数据拉取失败，将以本地数据为准');
+        setMigration(null);
+        setMigrationResolved(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // 仅在 user 变化（新登录/登出）时触发；state 变化由 sync 自身处理
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const update: Updater = (path, value) => {
     setState((prev) => {
@@ -79,14 +156,24 @@ function Shell({
   const deleteAsset = (id: string) => {
     setState((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
-      next.assets = next.assets.filter((a: any) => a.id !== id);
+      next.assets = next.assets.filter((a: any) => a.id === id);
       return next;
     });
   };
   const switchStrategy = (id: string) => update('activeStrategy', id);
   const onReset = () => {
-    setState(resetState());
-    message.success('已重置为默认数据');
+    Modal.confirm({
+      title: '确认重置？',
+      content: '将清空全部标的和参数，恢复为默认示例数据。',
+      okText: '重置',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        const next = resetState();
+        setState(next);
+        message.success('已重置为默认数据');
+      },
+    });
   };
   const onToggleTheme = () => update('theme', mode === 'dark' ? 'light' : 'dark');
   const onCopy = () => {
@@ -99,6 +186,45 @@ function Shell({
       fail();
     }
   };
+
+  const onOpenLogin = () => { setAuthInitialMode('login'); setAuthOpen(true); };
+  const onOpenRegister = () => { setAuthInitialMode('register'); setAuthOpen(true); };
+  const onLogout = async () => {
+    Modal.confirm({
+      title: '确认登出？',
+      content: '登出后未保存的本地更改不会丢失，但不会再自动同步到云端。',
+      okText: '登出',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        await logout();
+        message.success('已登出');
+      },
+    });
+  };
+
+  // 迁移对话框的 3 个选项
+  const onChooseLocal = useCallback(async () => {
+    setMigrationResolved(true);
+    setMigration(null);
+    await sync.syncNow();
+    message.success('已用本地数据覆盖云端');
+  }, [sync]);
+  const onChooseCloud = useCallback(() => {
+    if (migration?.cloudPayload) {
+      setState((prev) => applySyncPayload(prev, migration.cloudPayload as any));
+    }
+    setMigrationResolved(true);
+    setMigration(null);
+    message.success('已用云端数据覆盖本地');
+  }, [migration]);
+  const onMigrationCancel = useCallback(async () => {
+    // 取消即登出，恢复游客
+    setMigration(null);
+    setMigrationResolved(true);
+    await logout();
+    message.info('已取消登录，可继续以游客模式使用');
+  }, [logout]);
 
   const items = STRATEGIES.map((s) => ({
     key: s.id,
@@ -128,6 +254,19 @@ function Shell({
           onCopy={onCopy}
           onReset={onReset}
           onToggleTheme={onToggleTheme}
+          user={user}
+          onOpenLogin={onOpenLogin}
+          onOpenRegister={onOpenRegister}
+          onLogout={onLogout}
+          syncStatusEl={
+            <SyncStatusBadge
+              status={sync.status}
+              lastSyncedAt={sync.lastSyncedAt}
+              lastError={sync.lastError}
+              onSyncNow={sync.syncNow}
+              loggedIn={!!user}
+            />
+          }
         />
       </div>
       <Content className="app-content">
@@ -135,12 +274,25 @@ function Shell({
           <Tabs activeKey={active} onChange={switchStrategy} items={items} destroyInactiveTabPane={false} />
         </div>
       </Content>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} initialMode={authInitialMode} />
+      {migration && (
+        <MigrationDialog
+          open={migration.open}
+          cloudUpdatedAt={migration.cloudUpdatedAt}
+          localAssetCount={migration.localAssetCount}
+          onChooseLocal={onChooseLocal}
+          onChooseCloud={onChooseCloud}
+          onCancel={onMigrationCancel}
+        />
+      )}
     </Layout>
   );
 }
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadState());
+
+  // 游客 / 已登录用户的本地持久化（已登录：localStorage 仍是云端的镜像缓存）
   useEffect(() => {
     saveState(state);
   }, [state]);
@@ -148,7 +300,9 @@ export default function App() {
   return (
     <ConfigProvider theme={getThemeConfig(state.theme)}>
       <AntApp>
-        <Shell state={state} setState={setState} />
+        <AuthProvider>
+          <Shell state={state} setState={setState} />
+        </AuthProvider>
       </AntApp>
     </ConfigProvider>
   );
