@@ -48,8 +48,9 @@ export async function ensureSchema() {
   if (_ready) return _ready;
   _ready = (async () => {
     const sql = getSql();
-    // neon 的 template literal 接受用 ; 分隔的多条语句
-    await sql(SCHEMA_SQL);
+    // 多条 DDL 用字符串传入；必须走 .query() 因为 neon() v1.x 不再支持
+    // 直接把多语句 SQL 当 tagged template 的字符串部分。
+    await sql.query(SCHEMA_SQL);
   })();
   return _ready;
 }
