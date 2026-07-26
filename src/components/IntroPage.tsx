@@ -164,6 +164,12 @@ export default function IntroPage() {
         />
       </Card>
 
+      <Card title="关于估值分位" style={{ marginTop: 16 }}>
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          本计算器展示的“估值分位”为标的近10年月度收盘价（指数/ETF）或单位净值（基金）在历史序列中的排名百分比，属历史价格/净值的相对位置参考，并非官方PE/PB估值分位，不构成任何投资建议，亦不承诺收益。
+        </Typography.Paragraph>
+      </Card>
+
       <Alert
         type="warning"
         showIcon
@@ -171,6 +177,10 @@ export default function IntroPage() {
         message="风险提示"
         description="本工具所有计算基于你手动输入的数据与既定公式，结果仅供学习与研究参考，不构成任何投资建议。定投不保证保本，市场有风险，决策需谨慎。"
       />
+
+      <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, textAlign: 'center' }}>
+        基金有风险，投资需谨慎
+      </Typography.Paragraph>
     </div>
   );
 }

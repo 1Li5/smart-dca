@@ -1,4 +1,4 @@
-import { Alert, Table } from 'antd';
+import { Alert, Table, Typography } from 'antd';
 import type { StrategyResult } from '../lib/calc';
 import StatusBadge from './StatusBadge';
 
@@ -37,6 +37,11 @@ export default function ResultTable({ result }: { result: StrategyResult }) {
 
   return (
     <div>
+      {result.strategy === 'percentile' && (
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+          ≈历史排名参考，非官方估值
+        </Typography.Text>
+      )}
       <div className="result-scroll">
         <Table
           columns={cols}
