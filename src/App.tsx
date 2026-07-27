@@ -16,6 +16,7 @@ import BacktestPanel from './components/BacktestPanel';
 import AuthModal from './components/AuthModal';
 import MigrationDialog from './components/MigrationDialog';
 import SyncStatusBadge from './components/SyncStatus';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const { Content } = Layout;
 
@@ -347,7 +348,9 @@ export default function App() {
     <ConfigProvider theme={getThemeConfig(state.theme)}>
       <AntApp>
         <AuthProvider>
-          <Shell state={state} setState={setState} />
+          <ErrorBoundary>
+            <Shell state={state} setState={setState} />
+          </ErrorBoundary>
         </AuthProvider>
       </AntApp>
     </ConfigProvider>

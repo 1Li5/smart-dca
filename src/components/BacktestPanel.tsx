@@ -34,7 +34,9 @@ export default function BacktestPanel({ state }: Props) {
   const [result, setResult] = useState<BacktestResult | null>(null);
 
   const run = useCallback(async () => {
-    const assets = (state.assets || []).filter((a) => a.code && String(a.code).trim().length > 0);
+    const rawAssets = state.assets;
+    const safeAssets: any[] = Array.isArray(rawAssets) ? rawAssets : [];
+    const assets = safeAssets.filter((a) => a && a.code && String(a.code).trim().length > 0);
     if (assets.length === 0) {
       message.warning('请为标的填写代码（指数 / 基金代码）后回测');
       setResult(null);
