@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useCloudSync } from './hooks/useCloudSync';
 import { fetchRemoteData } from './lib/auth';
 import { extractSyncPayload, applySyncPayload } from './lib/syncSlice';
+import { readShareFromHash, decodeShare, clearShareHash } from './lib/share';
 import AppHeader from './components/AppHeader';
 import IntroPage from './components/IntroPage';
 import StrategyView from './components/StrategyView';
@@ -78,6 +79,7 @@ function Shell({
   const mode = state.theme;
   const active = state.activeStrategy;
   const result = active !== 'intro' ? runStrategy(active, state) : null;
+  const strategyName = STRATEGIES.find((s) => s.id === active)?.name || active;
   const copyText = result ? result.copyLines.join('\n') : '';
 
   // 上云：登录后自动防抖同步（受 migrationResolved 门控）
@@ -186,6 +188,35 @@ function Shell({
       fail();
     }
   };
+  const onImport = (payload: any) => {
+    setState((prev) => applySyncPayload(prev, payload));
+    message.success('已导入配置，参数已更新');
+  };
+
+  // 挂载时：若 URL 带 #cfg= 分享配置，询问后还原（容错，不抛异常）
+  useEffect(() => {
+    const raw = readShareFromHash();
+    if (!raw) return;
+    const decoded = decodeShare(raw);
+    if (!decoded.ok || !decoded.payload) {
+      clearShareHash();
+      if (raw) message.warning(decoded.error || '分享链接已失效');
+      return;
+    }
+    Modal.confirm({
+      title: '检测到分享方案',
+      content: '当前链接包含一份定投配置，是否还原到本机？',
+      okText: '还原',
+      cancelText: '忽略',
+      onOk: () => {
+        onImport(decoded.payload);
+        clearShareHash();
+      },
+      onCancel: () => clearShareHash(),
+    });
+    // 仅挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onOpenLogin = () => { setAuthInitialMode('login'); setAuthOpen(true); };
   const onOpenRegister = () => { setAuthInitialMode('register'); setAuthOpen(true); };
@@ -267,6 +298,10 @@ function Shell({
               loggedIn={!!user}
             />
           }
+          state={state}
+          result={result}
+          strategyName={strategyName}
+          onImport={onImport}
         />
       </div>
       <Content className="app-content">

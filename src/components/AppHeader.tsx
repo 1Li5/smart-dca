@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Button, Dropdown, Space, Typography } from 'antd';
 import {
@@ -11,8 +12,12 @@ import {
   LoginOutlined,
   UserAddOutlined,
   MoreOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { useResponsive } from '../hooks/useResponsive';
+import { useExportActions } from './ExportMenu';
+import ShareCard from './ShareCard';
+import type { AppState, StrategyResult } from '../lib/calc';
 
 interface Props {
   mode: 'light' | 'dark';
@@ -25,13 +30,27 @@ interface Props {
   onOpenRegister: () => void;
   onLogout: () => void;
   syncStatusEl: ReactNode;
+  state: AppState;
+  result: StrategyResult | null;
+  strategyName: string;
+  onImport: (payload: any) => void;
 }
 
 export default function AppHeader({
   mode, canCopy, onCopy, onReset, onToggleTheme,
   user, onOpenLogin, onOpenRegister, onLogout, syncStatusEl,
+  state, result, strategyName, onImport,
 }: Props) {
   const { isMobile } = useResponsive();
+  const shareRef = useRef<HTMLDivElement>(null);
+  const { items: exportItems, fileInput } = useExportActions({
+    state,
+    result,
+    strategyName,
+    onCopy,
+    onImport,
+    getCardEl: () => shareRef.current,
+  });
   const authControl = user ? (
     <Dropdown
       menu={{
@@ -72,7 +91,7 @@ export default function AppHeader({
           <Dropdown
             menu={{
               items: [
-                { key: 'copy', icon: <CopyOutlined />, label: '复制方案', disabled: !canCopy, onClick: onCopy },
+                { key: 'export', icon: <ShareAltOutlined />, label: '导出/分享', children: exportItems },
                 { key: 'reset', icon: <ReloadOutlined />, label: '重置', onClick: onReset },
                 {
                   key: 'theme',
@@ -89,14 +108,9 @@ export default function AppHeader({
           </Dropdown>
         ) : (
           <>
-            <Button
-              icon={<CopyOutlined />}
-              onClick={onCopy}
-              disabled={!canCopy}
-              title={canCopy ? '复制本期定投方案' : '介绍页无需复制'}
-            >
-              复制方案
-            </Button>
+            <Dropdown menu={{ items: exportItems }} placement="bottomRight">
+              <Button icon={<ShareAltOutlined />}>导出/分享</Button>
+            </Dropdown>
             <Button icon={<ReloadOutlined />} onClick={onReset}>
               重置
             </Button>
@@ -109,6 +123,13 @@ export default function AppHeader({
           </>
         )}
         {authControl}
+        {/* 离屏分享卡：仅供 html2canvas 截图，不影响布局/交互 */}
+        <div style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none', zIndex: -1 }}>
+          <div ref={shareRef}>
+            <ShareCard state={state} result={result} strategyName={strategyName} />
+          </div>
+        </div>
+        {fileInput}
       </Space>
     </div>
   );
