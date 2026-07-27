@@ -1,3 +1,7 @@
+// @ts-nocheck
+// 本文件测试 api/ 下的 Serverless 函数（.js，未纳入 src 的 TS 工程、无 .d.ts）。
+// tsc --noEmit 对跨层导入 .js 会报 TS7016；该测试仅由 vitest（esbuild）执行，
+// 运行时无类型检查需求，故整体跳过 tsc，避免污染 `npm run typecheck` 门禁。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pingDb } from '../../api/db-ping';
 import handler from '../../api/db-ping';
