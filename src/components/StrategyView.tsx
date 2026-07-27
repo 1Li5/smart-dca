@@ -29,6 +29,16 @@ export default function StrategyView({
 }: Props) {
   const meta = STRATEGIES.find((s) => s.id === strategy)!;
 
+  // 防御：上游若 result=null，绝不抛错，渲染提示并隐藏数据卡
+  if (!result) {
+    return (
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Alert type="info" showIcon message={meta.name} description={meta.desc} />
+        <Alert type="warning" showIcon message="该策略暂无计算结果" description="请确认标的与参数后回到该策略 Tab 重新计算。" />
+      </Space>
+    );
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Alert type="info" showIcon message={meta.name} description={meta.desc} />

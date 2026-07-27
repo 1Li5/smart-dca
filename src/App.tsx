@@ -3,7 +3,7 @@ import { ConfigProvider, Layout, Tabs, App as AntApp, Modal } from 'antd';
 import { getThemeConfig } from './theme';
 import { DEFAULT_STATE, STRATEGIES } from './lib/defaults';
 import { loadState, saveState, resetState } from './lib/storage';
-import { runStrategy, type AppState } from './lib/calc';
+import { runStrategy, type AppState, type StrategyResult } from './lib/calc';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useCloudSync } from './hooks/useCloudSync';
 import { fetchRemoteData } from './lib/auth';
@@ -85,6 +85,18 @@ function Shell({
   const result = active !== 'intro' && active !== 'backtest' ? runStrategy(active, state) : null;
   const strategyName = STRATEGIES.find((s) => s.id === active)?.name || active;
   const copyText = result ? result.copyLines.join('\n') : '';
+
+  // 每个非 intro/backtest 策略独立算自己的 result（不让全局 result=null 渗透进 inactive StrategyView）
+  // 关键：active=backtest 时全局 result=null，但 StrategyView 仍需各自合法 result，否则 ResultCharts 解构崩溃
+  const strategyResults = useMemo<Record<string, StrategyResult>>(() => {
+    const m: Record<string, StrategyResult> = {};
+    STRATEGIES.forEach((s) => {
+      if (s.id !== 'intro' && s.id !== 'backtest') {
+        m[s.id] = runStrategy(s.id, state);
+      }
+    });
+    return m;
+  }, [state]);
 
   // 上云：登录后自动防抖同步（受 migrationResolved 门控）
   const sync = useCloudSync(user, extractSyncPayload(state), migrationResolved);
@@ -279,7 +291,7 @@ function Shell({
         <StrategyView
           strategy={s.id}
           state={state}
-          result={result!}
+          result={strategyResults[s.id]!}
           update={update}
           updateAsset={updateAsset}
           onAddAsset={addAsset}

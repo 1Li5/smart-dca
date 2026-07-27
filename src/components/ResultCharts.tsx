@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card, Col, Row, Typography } from 'antd';
+import { Card, Col, Empty, Row, Typography } from 'antd';
 import type { AppState, ResultRow, StrategyResult } from '../lib/calc';
 import { num, fmtMoney, fmtPct, fmtNum, fmtSigned } from '../lib/calc';
 import { chartColors, statusColor, CATEGORICAL } from '../theme';
@@ -47,6 +47,8 @@ export default function ResultCharts({
   result: StrategyResult;
   state: AppState;
 }) {
+  // 防御：上游因任何原因把 null 传过来时，绝不抛错、显示 Empty
+  if (!result) return <Empty description="无回测结果" />;
   const { strategy } = result;
   // 介绍页无图表数据
   if (strategy === 'intro') return null;
