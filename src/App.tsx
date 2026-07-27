@@ -32,6 +32,7 @@ function makeAsset() {
   return {
     id: 'a_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 1e4),
     name: '新标的',
+    code: '',
     currentPrice: 0,
     ma30: 0,
     baseAmount: 1000,
@@ -46,6 +47,7 @@ function makeAsset() {
     gridLower: 0,
     currentValue: 0,
     targetRatio: 0,
+    takeProfitPrice: 0,
   };
 }
 

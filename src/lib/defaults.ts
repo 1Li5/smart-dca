@@ -170,6 +170,7 @@ export const DEFAULT_STATE: AppState = {
     {
       id: 'a1',
       name: '纳斯达克100',
+      code: '110011', // 易方达纳斯达克100 基金；fetchSeries(type='auto') 先试 fund 再试 index
       currentPrice: 20000,
       ma30: 17000,
       baseAmount: 1000,
@@ -189,6 +190,7 @@ export const DEFAULT_STATE: AppState = {
     {
       id: 'a2',
       name: '中证500',
+      code: '000905', // 中证500 指数；新浪/Sina 日线可拉
       currentPrice: 5500,
       ma30: 5800,
       baseAmount: 1000,
@@ -208,6 +210,7 @@ export const DEFAULT_STATE: AppState = {
     {
       id: 'a3',
       name: '黄金ETF',
+      code: '518880', // 华安黄金ETF；可作为基金拉全量净值
       currentPrice: 5.6,
       ma30: 5.2,
       baseAmount: 1000,
