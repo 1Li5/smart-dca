@@ -53,6 +53,8 @@ export interface Asset {
   gridLower: number;
   currentValue: number;
   targetRatio: number;
+  /** 逐标的目标止盈价；0=未设置（仅用于提示，不改变分配金额） */
+  takeProfitPrice?: number;
 }
 
 export interface AppState {
@@ -85,6 +87,16 @@ export interface AppState {
   rebalance: {
     totalValue: number;
     rebalanceNow: boolean;
+    /** 再平衡频率（当前仅透传展示，真正驱动再平衡事件留待后续回测批次） */
+    frequency?: 'monthly' | 'quarterly' | 'yearly' | 'threshold';
+    /** 阈值触发模式下的偏离阈值（%），frequency==='threshold' 时生效 */
+    thresholdPct?: number;
+  };
+  /** 止盈提示设置（仅提示，不改变分配金额） */
+  takeProfit: {
+    enabled: boolean;
+    /** 估值百分位止盈阈值（percentile 类策略用） */
+    percentile: number;
   };
 }
 
@@ -140,13 +152,19 @@ function calcPosition(state: AppState): StrategyResult {
     const w = weights[i];
     let amount = sumW > 0 ? budget * (w / sumW) : 0;
     amount = capMax(amount, maxA);
+    const takeProfitHit = !!(
+      state.takeProfit?.enabled &&
+      num(a.takeProfitPrice) > 0 &&
+      num(a.currentPrice) >= num(a.takeProfitPrice)
+    );
     return {
-      _status: null,
+      _status: takeProfitHit ? 'sell' : null,
       name: a.name || '(未命名)',
       currentPrice: num(a.currentPrice),
       ma30: num(a.ma30),
       weight: w,
       amount: amount,
+      hitTakeProfit: takeProfitHit,
     };
   });
 
@@ -156,6 +174,12 @@ function calcPosition(state: AppState): StrategyResult {
     warnings.push(`部分标的命中单期上限 ${fmtMoney(maxA)}，合计可能小于预算。`);
   else if (sumW > 0 && Math.abs(total - budget) > 0.01)
     warnings.push(`合计金额 ${fmtMoney(total)} 与预算 ${fmtMoney(budget)} 不一致（疑似精度问题）。`);
+
+  const tp = rows.filter((r) => r.hitTakeProfit);
+  if (tp.length)
+    warnings.push(
+      `${tp.map((r) => r.name).join('、')} 已达您预设的止盈价/止盈百分位，是否止盈属个人决策；基金有风险，投资需谨慎，测算仅供参考，不构成投资建议。`
+    );
 
   return {
     strategy: 'position',
@@ -198,14 +222,19 @@ function calcPercentile(state: AppState): StrategyResult {
     let amount = num(a.baseAmount) * mult;
     amount = capMax(amount, maxA);
 
+    const takeProfitHit = !!(
+      state.takeProfit?.enabled && p >= num(state.takeProfit.percentile)
+    );
+
     return {
-      _status: status,
+      _status: takeProfitHit ? 'extreme' : status,
       name: a.name || '(未命名)',
       metric: `${a.metricType === 'PB' ? 'PB' : 'PE'} ${fmtNum(num(a.valuationMetric))}`,
       percentile: p,
       statusLabel,
       amount,
       paused,
+      hitTakeProfit: takeProfitHit,
     };
   });
 
@@ -216,6 +245,12 @@ function calcPercentile(state: AppState): StrategyResult {
     warnings.push(`止盈提示：${extreme.map((r) => r.name).join('、')} 估值百分位 > ${high}%（极度高估），已暂停定投，建议止盈。`);
   if (maxA > 0 && rows.some((r) => r.amount >= maxA - 1e-9 && !r.paused))
     warnings.push(`部分标的命中单期上限 ${fmtMoney(maxA)}。`);
+
+  const tp = rows.filter((r) => r.hitTakeProfit);
+  if (tp.length)
+    warnings.push(
+      `${tp.map((r) => r.name).join('、')} 已达您预设的止盈价/止盈百分位，是否止盈属个人决策；基金有风险，投资需谨慎，测算仅供参考，不构成投资建议。`
+    );
 
   return {
     strategy: 'percentile',
@@ -375,8 +410,12 @@ function calcGrid(state: AppState): StrategyResult {
     const deltaShares = status === 'buy' ? shares : status === 'sell' ? -shares : 0;
     const newHold = hold + deltaShares;
 
+    const takeProfitHit = !!(
+      state.takeProfit?.enabled && num(a.takeProfitPrice) > 0 && cur >= num(a.takeProfitPrice)
+    );
+
     return {
-      _status: status,
+      _status: takeProfitHit ? 'sell' : status,
       name: a.name || '(未命名)',
       currentPrice: cur,
       gridLevel: idx,
@@ -385,12 +424,19 @@ function calcGrid(state: AppState): StrategyResult {
       amount,
       shares: deltaShares,
       holdAfter: newHold,
+      hitTakeProfit: takeProfitHit,
     };
   });
 
   const warnings: string[] = [];
   if (maxA > 0 && rows.some((r) => r.amount >= maxA - 1e-9))
     warnings.push(`部分标的命中单期上限 ${fmtMoney(maxA)}。`);
+
+  const tp = rows.filter((r) => r.hitTakeProfit);
+  if (tp.length)
+    warnings.push(
+      `${tp.map((r) => r.name).join('、')} 已达您预设的止盈价/止盈百分位，是否止盈属个人决策；基金有风险，投资需谨慎，测算仅供参考，不构成投资建议。`
+    );
 
   return {
     strategy: 'grid',
@@ -456,6 +502,20 @@ function calcRebalance(state: AppState): StrategyResult {
     warnings.push(`目标配置比例合计 ${fmtNum(ratioSum, 2)}% ≠ 100%，请检查比例设置。`);
   if (Math.abs(allocSum - budget) > 0.01)
     warnings.push(`分配合计 ${fmtMoney(allocSum)} 与预算 ${fmtMoney(budget)} 不一致（比例合计≠100% 或触发上限）。`);
+
+  // 再平衡频率仅透传展示（当前不改变分配逻辑）
+  const freq = state.rebalance && state.rebalance.frequency;
+  if (freq && freq !== 'monthly') {
+    const freqLabel =
+      freq === 'quarterly'
+        ? '每季'
+        : freq === 'yearly'
+        ? '每年'
+        : freq === 'threshold'
+        ? `偏离超 ${num(state.rebalance.thresholdPct)}% 时`
+        : '';
+    if (freqLabel) warnings.push(`再平衡频率设置：${freqLabel}。`);
+  }
 
   const rows: ResultRow[] = items.map((it) => {
     let advice = '—';

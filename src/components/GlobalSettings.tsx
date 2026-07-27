@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { App, Button, Col, InputNumber, Row, Switch, Typography } from 'antd';
+import { App, Button, Col, InputNumber, Row, Select, Switch, Typography } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import type { AppState } from '../lib/calc';
 
@@ -25,12 +25,14 @@ function LabeledNumber({
   onChange,
   step = 'any',
   addonAfter,
+  disabled,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   step?: string;
   addonAfter?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="field">
@@ -40,6 +42,7 @@ function LabeledNumber({
         onChange={(v) => onChange(v ?? 0)}
         step={step}
         addonAfter={addonAfter}
+        disabled={disabled}
         style={{ width: '100%' }}
       />
     </div>
@@ -135,6 +138,30 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
           tiers={state.percentileTiers as any}
           onChange={(k, v) => update(`percentileTiers.${k}`, v)}
         />
+        <Row gutter={[16, 16]}>
+          <FieldCol>
+            <div className="field">
+              <div className="field-label">启用止盈提示</div>
+              <Switch
+                checked={!!state.takeProfit?.enabled}
+                onChange={(v) => update('takeProfit.enabled', v)}
+              />
+            </div>
+          </FieldCol>
+          <FieldCol>
+            <LabeledNumber
+              label="止盈百分位阈值(%)"
+              value={state.takeProfit?.percentile ?? 80}
+              onChange={(v) => update('takeProfit.percentile', v)}
+              step="any"
+              addonAfter="%"
+              disabled={!state.takeProfit?.enabled}
+            />
+          </FieldCol>
+        </Row>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+          开启后，当标的估值百分位达到设定阈值时仅作提示（不改变定投金额），是否止盈属个人决策，基金有风险，投资需谨慎。
+        </Typography.Paragraph>
       </>
     );
   } else if (strategy === 'ladder') {
@@ -219,9 +246,36 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
               />
             </div>
           </FieldCol>
+          <FieldCol>
+            <div className="field">
+              <div className="field-label">再平衡频率</div>
+              <Select
+                value={state.rebalance.frequency ?? 'monthly'}
+                onChange={(v) => update('rebalance.frequency', v)}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'monthly', label: '每月' },
+                  { value: 'quarterly', label: '每季' },
+                  { value: 'yearly', label: '每年' },
+                  { value: 'threshold', label: '偏离阈值触发' },
+                ]}
+              />
+            </div>
+          </FieldCol>
+          {(state.rebalance.frequency ?? 'monthly') === 'threshold' && (
+            <FieldCol>
+              <LabeledNumber
+                label="偏离阈值(%)"
+                value={state.rebalance.thresholdPct ?? 5}
+                onChange={(v) => update('rebalance.thresholdPct', v)}
+                step="any"
+                addonAfter="%"
+              />
+            </FieldCol>
+          )}
         </Row>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-          定投资金优先补足占比低于目标的资产；开启再平衡后显示各资产买卖建议。
+          定投资金优先补足占比低于目标的资产；开启再平衡后显示各资产买卖建议。再平衡频率仅作展示，实际触发节奏由您自行安排。
         </Typography.Paragraph>
       </>
     );

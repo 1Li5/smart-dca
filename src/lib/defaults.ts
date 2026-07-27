@@ -37,6 +37,7 @@ export const FIELD_DEFS: Record<string, FieldDef> = {
   gridLower: { key: 'gridLower', label: '下限价', type: 'number', step: 'any' },
   currentValue: { key: 'currentValue', label: '当前市值', type: 'number', step: 'any' },
   targetRatio: { key: 'targetRatio', label: '目标比例(%)', type: 'number', step: 'any' },
+  takeProfitPrice: { key: 'takeProfitPrice', label: '目标止盈价', type: 'number', step: 'any', placeholder: '0=未设' },
 };
 
 export type StrategyKind = 'intro' | 'asset' | 'account';
@@ -67,7 +68,7 @@ export const STRATEGIES: StrategyMeta[] = [
     short: '位置权重',
     desc: '以 30 月均线为锚，当前越低于均值、权重越高，自动多投；基准策略',
     kind: 'asset',
-    assetFields: ['name', 'currentPrice', 'ma30'],
+    assetFields: ['name', 'currentPrice', 'ma30', 'takeProfitPrice'],
   },
   {
     id: 'percentile',
@@ -108,6 +109,7 @@ export const STRATEGIES: StrategyMeta[] = [
       'holdingShares',
       'gridUpper',
       'gridLower',
+      'takeProfitPrice',
     ],
   },
   {
@@ -147,6 +149,7 @@ export function makeAsset(name: string): Asset {
     gridLower: 0,
     currentValue: 0,
     targetRatio: 0,
+    takeProfitPrice: 0,
   };
 }
 
@@ -173,6 +176,7 @@ export const DEFAULT_STATE: AppState = {
       gridLower: 12000,
       currentValue: 200000,
       targetRatio: 50,
+      takeProfitPrice: 0,
     },
     {
       id: 'a2',
@@ -191,6 +195,7 @@ export const DEFAULT_STATE: AppState = {
       gridLower: 4500,
       currentValue: 150000,
       targetRatio: 30,
+      takeProfitPrice: 0,
     },
     {
       id: 'a3',
@@ -209,10 +214,12 @@ export const DEFAULT_STATE: AppState = {
       gridLower: 4,
       currentValue: 50000,
       targetRatio: 20,
+      takeProfitPrice: 0,
     },
   ],
   percentileTiers: { low: 30, normalHigh: 70, high: 90, lowMult: 1.8, normalMult: 1.0, highMult: 0.5 },
   ladderTiers: { sigHigh: 0.5, lightHigh: 0.8, normal: 1.0, lightLow: 1.5, sigLow: 2.0 },
   va: { prevTargetValue: 50000, monthlyGrowth: 5000, prevEndActual: 52000, currentChange: -5 },
-  rebalance: { totalValue: 0, rebalanceNow: false },
+  rebalance: { totalValue: 0, rebalanceNow: false, frequency: 'monthly', thresholdPct: 5 },
+  takeProfit: { enabled: false, percentile: 80 },
 };

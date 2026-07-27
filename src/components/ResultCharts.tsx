@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card, Col, Row } from 'antd';
+import { Card, Col, Row, Typography } from 'antd';
 import type { AppState, ResultRow, StrategyResult } from '../lib/calc';
 import { num, fmtMoney, fmtPct, fmtNum, fmtSigned } from '../lib/calc';
 import { chartColors, statusColor, CATEGORICAL } from '../theme';
@@ -109,6 +109,20 @@ export default function ResultCharts({
     );
   }
 
+  // ---------- 止盈百分位阈值（percentile） ----------
+  if (strategy === 'percentile' && !!state.takeProfit?.enabled) {
+    const pItems = result.rows.map((r) => ({
+      name: r.name ?? '',
+      pct: num(r.percentile),
+      hit: !!r.hitTakeProfit,
+    }));
+    push(
+      'tp-pct',
+      '止盈百分位阈值',
+      <PercentileThresholdChart items={pItems} threshold={num(state.takeProfit.percentile)} colors={colors} />
+    );
+  }
+
   if (strategy === 'ladder') {
     const dItems: BarItem[] = result.rows.map((r) => ({
       label: r.name ?? '',
@@ -135,6 +149,24 @@ export default function ResultCharts({
     );
   }
 
+  // ---------- 止盈价参考（position / grid：当前价 vs 目标止盈价） ----------
+  if (strategy === 'position' || strategy === 'grid') {
+    const tpItems = (state.assets || [])
+      .filter((a) => num(a.takeProfitPrice) > 0 || !!state.takeProfit?.enabled)
+      .map((a) => ({
+        name: a.name || '(未命名)',
+        price: num(a.currentPrice),
+        tp: num(a.takeProfitPrice),
+        hit: !!(
+          state.takeProfit?.enabled &&
+          num(a.takeProfitPrice) > 0 &&
+          num(a.currentPrice) >= num(a.takeProfitPrice)
+        ),
+      }));
+    if (tpItems.length > 0)
+      push('take-profit', '止盈价参考（当前价 vs 目标止盈价）', <TakeProfitChart items={tpItems} colors={colors} />);
+  }
+
   // ---------- 持仓当前市值占比（rebalance 及通用资产策略） ----------
   if (strategy === 'rebalance' || ASSET_STRATEGIES.includes(strategy)) {
     const assetPie = buildPieFromAssets(state);
@@ -150,6 +182,26 @@ export default function ResultCharts({
   // ---------- rebalance：目标比例 vs 当前占比 分组柱状对比 ----------
   if (strategy === 'rebalance') {
     push('ratio-cmp', '目标比例 vs 当前占比', <GroupedRatioChart rows={result.rows} colors={colors} />);
+
+    // 再平衡频率仅透传展示（不改变分配逻辑）
+    const freq = state.rebalance?.frequency ?? 'monthly';
+    const freqLabel =
+      freq === 'monthly'
+        ? '每月'
+        : freq === 'quarterly'
+        ? '每季'
+        : freq === 'yearly'
+        ? '每年'
+        : freq === 'threshold'
+        ? `偏离超 ${num(state.rebalance?.thresholdPct)}% 时`
+        : '';
+    push(
+      'rebalance-freq',
+      '再平衡频率',
+      <Typography.Paragraph style={{ margin: 0 }} type="secondary">
+        {freqLabel}（仅展示，实际再平衡由您自行安排，系统不自动执行买卖）
+      </Typography.Paragraph>
+    );
   }
 
   // ---------- va：目标 vs 期初实际 vs 操作金额 ----------
@@ -267,6 +319,164 @@ function GroupedRatioChart({ rows, colors }: { rows: ResultRow[]; colors: ChartC
           当前占比
         </text>
       </g>
+    </svg>
+  );
+}
+
+// ====================================================================
+// 止盈价参考图（position / grid）：当前价柱 + 逐标的止盈价橙色虚线
+// 命中止盈（当前价≥止盈价）的柱高亮为卖出绿 #389e0d
+// ====================================================================
+function TakeProfitChart({
+  items,
+  colors,
+}: {
+  items: { name: string; price: number; tp: number; hit: boolean }[];
+  colors: ChartColors;
+}) {
+  const VB_W = 640;
+  const VB_H = 260;
+  const PAD = { l: 44, r: 14, t: 26, b: 40 };
+  const plotL = PAD.l;
+  const plotR = VB_W - PAD.r;
+  const plotT = PAD.t;
+  const plotB = VB_H - PAD.b;
+  const plotW = plotR - plotL;
+  const plotH = plotB - plotT;
+
+  const maxV = Math.max(1, ...items.map((it) => Math.max(it.price, it.tp > 0 ? it.tp : 0)));
+  const yFor = (v: number) => plotB - (v / maxV) * plotH;
+  const slot = plotW / Math.max(1, items.length);
+  const barW = Math.min(64, slot * 0.6);
+
+  const ticks = Array.from({ length: 4 }, (_, i) => {
+    const val = (maxV * i) / 4;
+    const y = plotT + plotH * (1 - i / 4);
+    return (
+      <g key={`t${i}`}>
+        <line x1={plotL} y1={y} x2={plotR} y2={y} stroke={colors.grid} strokeWidth={1} />
+        <text x={plotL - 6} y={y + 3} textAnchor="end" fill={colors.text} fontSize={10}>
+          {fmtNum(val, 2)}
+        </text>
+      </g>
+    );
+  });
+
+  return (
+    <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img" aria-label="止盈价参考">
+      {ticks}
+      <line x1={plotL} y1={plotT} x2={plotL} y2={plotB} stroke={colors.axis} strokeWidth={1.2} />
+      <line x1={plotL} y1={plotB} x2={plotR} y2={plotB} stroke={colors.axis} strokeWidth={1.2} />
+      {items.map((it, i) => {
+        const cx = plotL + slot * i + slot / 2;
+        const x = cx - barW / 2;
+        const y = yFor(it.price);
+        const h = Math.max(0, plotB - y);
+        const fill = it.hit ? colors.fall : colors.primary;
+        const label = it.name.length > 8 ? it.name.slice(0, 7) + '…' : it.name;
+        return (
+          <g key={i}>
+            {it.tp > 0 && (
+              <line
+                x1={x - 4}
+                y1={yFor(it.tp)}
+                x2={x + barW + 4}
+                y2={yFor(it.tp)}
+                stroke="#d46b08"
+                strokeWidth={1.4}
+                strokeDasharray="5 3"
+              />
+            )}
+            <rect x={x} y={y} width={barW} height={h} rx={3} fill={fill} />
+            <text x={cx} y={y - 6} textAnchor="middle" fill={colors.text} fontSize={11} fontWeight={600}>
+              {fmtNum(it.price, 2)}
+            </text>
+            <text x={cx} y={plotB + 16} textAnchor="middle" fill={colors.text} fontSize={11}>
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      <g transform={`translate(${plotL}, ${plotT - 8})`}>
+        <line x1={0} y1={-4} x2={14} y2={-4} stroke="#d46b08" strokeWidth={1.4} strokeDasharray="5 3" />
+        <text x={18} y={1} fill={colors.text} fontSize={11}>
+          止盈价（橙虚线）· 命中=绿
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+// ====================================================================
+// 止盈百分位阈值图（percentile）：百分位柱 + 全局阈值水平虚线
+// 命中（百分位≥阈值）的柱高亮为极端橙 #d46b08
+// ====================================================================
+function PercentileThresholdChart({
+  items,
+  threshold,
+  colors,
+}: {
+  items: { name: string; pct: number; hit: boolean }[];
+  threshold: number;
+  colors: ChartColors;
+}) {
+  const VB_W = 640;
+  const VB_H = 260;
+  const PAD = { l: 44, r: 14, t: 26, b: 40 };
+  const plotL = PAD.l;
+  const plotR = VB_W - PAD.r;
+  const plotT = PAD.t;
+  const plotB = VB_H - PAD.b;
+  const plotW = plotR - plotL;
+  const plotH = plotB - plotT;
+
+  const maxV = Math.max(100, threshold, ...items.map((it) => it.pct));
+  const yFor = (v: number) => plotB - (v / maxV) * plotH;
+  const slot = plotW / Math.max(1, items.length);
+  const barW = Math.min(64, slot * 0.6);
+
+  const ticks = Array.from({ length: 4 }, (_, i) => {
+    const val = (maxV * i) / 4;
+    const y = plotT + plotH * (1 - i / 4);
+    return (
+      <g key={`t${i}`}>
+        <line x1={plotL} y1={y} x2={plotR} y2={y} stroke={colors.grid} strokeWidth={1} />
+        <text x={plotL - 6} y={y + 3} textAnchor="end" fill={colors.text} fontSize={10}>
+          {fmtPct(val)}
+        </text>
+      </g>
+    );
+  });
+
+  return (
+    <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img" aria-label="止盈百分位阈值">
+      {ticks}
+      <line x1={plotL} y1={plotT} x2={plotL} y2={plotB} stroke={colors.axis} strokeWidth={1.2} />
+      <line x1={plotL} y1={plotB} x2={plotR} y2={plotB} stroke={colors.axis} strokeWidth={1.2} />
+      {items.map((it, i) => {
+        const cx = plotL + slot * i + slot / 2;
+        const x = cx - barW / 2;
+        const y = yFor(it.pct);
+        const h = Math.max(0, plotB - y);
+        const fill = it.hit ? colors.extreme : colors.primary;
+        const label = it.name.length > 8 ? it.name.slice(0, 7) + '…' : it.name;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={h} rx={3} fill={fill} />
+            <text x={cx} y={y - 6} textAnchor="middle" fill={colors.text} fontSize={11} fontWeight={600}>
+              {fmtPct(it.pct)}
+            </text>
+            <text x={cx} y={plotB + 16} textAnchor="middle" fill={colors.text} fontSize={11}>
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      {/* 止盈百分位阈值水平虚线 */}
+      <line x1={plotL} y1={yFor(threshold)} x2={plotR} y2={yFor(threshold)} stroke="#d46b08" strokeWidth={1.4} strokeDasharray="6 4" />
+      <text x={plotR - 4} y={yFor(threshold) - 6} textAnchor="end" fill="#d46b08" fontSize={11}>
+        止盈百分位 {fmtPct(threshold)}
+      </text>
     </svg>
   );
 }

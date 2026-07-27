@@ -408,3 +408,101 @@ describe('rebalance 恒定比例再平衡', () => {
     ).toBe(true);
   });
 });
+
+// ====================================================================
+// 批次D：止盈提示（take profit）
+// 仅提示：命中后 hitTakeProfit=true、warnings 含合规模板文案，分配金额不变
+// ====================================================================
+describe('批次D 止盈提示 take profit', () => {
+  it('TP-0 默认关闭：各策略无 hitTakeProfit、warnings 不含止盈文案', () => {
+    (['position', 'percentile', 'ladder', 'grid'] as const).forEach((strategy) => {
+      const s = cloneState();
+      const res = runStrategy(strategy, s);
+      expect(res.rows.every((r) => !r.hitTakeProfit)).toBe(true);
+      expect(res.warnings.some((w) => w.includes('已达您预设的止盈价/止盈百分位'))).toBe(false);
+    });
+  });
+
+  it('TP-1 position 命中止盈：hitTakeProfit=true、含合规文案、amount 不变', () => {
+    const mk = (enabled: boolean) => {
+      const s = cloneState();
+      s.takeProfit = { enabled, percentile: 80 };
+      s.assets[0].takeProfitPrice = 20000; // a1 当前价=20000，cur>=止盈价
+      return runStrategy('position', s);
+    };
+    const resOff = mk(false);
+    const resOn = mk(true);
+    expect(resOn.rows[0].hitTakeProfit).toBe(true);
+    expect(resOn.rows[0]._status).toBe('sell');
+    expect(resOn.warnings.some((w) => w.includes('已达您预设的止盈价/止盈百分位'))).toBe(true);
+    // 金额序列完全一致（止盈不改分配）
+    expect(resOn.rows.map((r) => r.amount)).toEqual(resOff.rows.map((r) => r.amount));
+  });
+
+  it('TP-2 grid 命中止盈：hitTakeProfit=true、含合规文案、amount 不变', () => {
+    const mk = (enabled: boolean) => {
+      const s = cloneState();
+      s.takeProfit = { enabled, percentile: 80 };
+      s.assets[0].takeProfitPrice = 20000; // a1 当前价=20000
+      return runStrategy('grid', s);
+    };
+    const resOff = mk(false);
+    const resOn = mk(true);
+    expect(resOn.rows[0].hitTakeProfit).toBe(true);
+    expect(resOn.rows[0]._status).toBe('sell');
+    expect(resOn.warnings.some((w) => w.includes('已达您预设的止盈价/止盈百分位'))).toBe(true);
+    expect(resOn.rows.map((r) => r.amount)).toEqual(resOff.rows.map((r) => r.amount));
+  });
+
+  it('TP-3 percentile 命中止盈（阈值=80，a3 百分位=80）：hitTakeProfit=true、含合规文案、amount 不变', () => {
+    const mk = (enabled: boolean) => {
+      const s = cloneState();
+      s.takeProfit = { enabled, percentile: 80 };
+      return runStrategy('percentile', s);
+    };
+    const resOff = mk(false);
+    const resOn = mk(true);
+    const idx = 2; // a3 黄金ETF 百分位=80
+    expect(resOn.rows[idx].hitTakeProfit).toBe(true);
+    expect(resOn.rows[idx]._status).toBe('extreme');
+    expect(resOn.warnings.some((w) => w.includes('已达您预设的止盈价/止盈百分位'))).toBe(true);
+    expect(resOn.rows[idx].amount).toBe(resOff.rows[idx].amount);
+  });
+});
+
+// ====================================================================
+// 批次D：再平衡频率透传（仅展示，不改变分配逻辑）
+// ====================================================================
+describe('批次D 再平衡频率 frequency 透传', () => {
+  function rbFreq(frequency: 'monthly' | 'quarterly' | 'yearly' | 'threshold', thresholdPct?: number): AppState {
+    const s = cloneState();
+    s.assets = [
+      mkAsset('a1', { currentValue: 200000, targetRatio: 50 }),
+      mkAsset('a2', { currentValue: 100000, targetRatio: 30 }),
+      mkAsset('a3', { currentValue: 100000, targetRatio: 20 }),
+    ];
+    s.rebalance = { totalValue: 400000, rebalanceNow: false, frequency, thresholdPct };
+    return s;
+  }
+
+  it('RB-F1 默认 monthly：warnings 不含频率提示（与改造前一致）', () => {
+    const res = runStrategy('rebalance', rbFreq('monthly'));
+    expect(res.warnings.some((w) => w.includes('再平衡频率设置'))).toBe(false);
+  });
+
+  it('RB-F2 quarterly：warnings 含「每季」', () => {
+    const res = runStrategy('rebalance', rbFreq('quarterly'));
+    expect(res.warnings.some((w) => w.includes('再平衡频率设置：每季。'))).toBe(true);
+  });
+
+  it('RB-F3 threshold + 5%：warnings 含「偏离超 5%」', () => {
+    const res = runStrategy('rebalance', rbFreq('threshold', 5));
+    expect(res.warnings.some((w) => w.includes('再平衡频率设置：偏离超 5% 时。'))).toBe(true);
+  });
+
+  it('RB-F4 频率不影响分配金额（与改造前一致）', () => {
+    const resBase = runStrategy('rebalance', rbFreq('monthly'));
+    const resQ = runStrategy('rebalance', rbFreq('quarterly'));
+    expect(resQ.rows.map((r) => r.alloc)).toEqual(resBase.rows.map((r) => r.alloc));
+  });
+});
