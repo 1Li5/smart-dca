@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { App, Button, InputNumber, Space, Switch, Typography } from 'antd';
+import { App, Button, Col, InputNumber, Row, Switch, Typography } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import type { AppState } from '../lib/calc';
 
@@ -10,31 +10,35 @@ interface Props {
   updateAsset: (id: string, field: string, value: any) => void;
 }
 
+/** 响应式字段列：手机整行、平板半行、桌面三列（基于 AntD5 Grid 断点） */
+function FieldCol({ children }: { children: React.ReactNode }) {
+  return (
+    <Col xs={24} sm={12} lg={8}>
+      {children}
+    </Col>
+  );
+}
+
 function LabeledNumber({
   label,
   value,
   onChange,
   step = 'any',
-  min,
   addonAfter,
-  width = 150,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   step?: string;
-  min?: number;
   addonAfter?: string;
-  width?: number;
 }) {
   return (
-    <div className="field" style={{ minWidth: width }}>
+    <div className="field">
       <div className="field-label">{label}</div>
       <InputNumber
         value={value}
         onChange={(v) => onChange(v ?? 0)}
         step={step}
-        min={min}
         addonAfter={addonAfter}
         style={{ width: '100%' }}
       />
@@ -56,16 +60,17 @@ function TierEditor({
   return (
     <div className="tier-box">
       <div className="tier-title">{title}</div>
-      <div className="tier-grid">
+      <Row gutter={[16, 16]}>
         {items.map((it) => (
-          <LabeledNumber
-            key={it.key}
-            label={it.label}
-            value={tiers[it.key] ?? 0}
-            onChange={(v) => onChange(it.key, v)}
-          />
+          <FieldCol key={it.key}>
+            <LabeledNumber
+              label={it.label}
+              value={tiers[it.key] ?? 0}
+              onChange={(v) => onChange(it.key, v)}
+            />
+          </FieldCol>
         ))}
-      </div>
+      </Row>
     </div>
   );
 }
@@ -93,7 +98,6 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
       value={state.maxSingleAmount}
       onChange={(v) => update('maxSingleAmount', v)}
       addonAfter="元"
-      width={190}
     />
   );
   const budget = (
@@ -102,7 +106,6 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
       value={state.monthlyBudget}
       onChange={(v) => update('monthlyBudget', v)}
       addonAfter="元"
-      width={160}
     />
   );
 
@@ -111,10 +114,10 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
   if (strategy === 'position') {
     body = (
       <>
-        <Space wrap size={16}>
-          {budget}
-          {commonMax}
-        </Space>
+        <Row gutter={[16, 16]}>
+          <FieldCol>{budget}</FieldCol>
+          <FieldCol>{commonMax}</FieldCol>
+        </Row>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
           位置权重 = 30月均值 ÷ 当前点位；单标的金额 = 预算 × (位置权重 ÷ 权重合计)。
         </Typography.Paragraph>
@@ -123,7 +126,9 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
   } else if (strategy === 'percentile') {
     body = (
       <>
-        {commonMax}
+        <Row gutter={[16, 16]}>
+          <FieldCol>{commonMax}</FieldCol>
+        </Row>
         <TierEditor
           title="估值分档（可自定义）"
           items={PCT_ITEMS}
@@ -135,7 +140,9 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
   } else if (strategy === 'ladder') {
     body = (
       <>
-        {commonMax}
+        <Row gutter={[16, 16]}>
+          <FieldCol>{commonMax}</FieldCol>
+        </Row>
         <TierEditor
           title="阶梯倍数（可自定义）"
           items={LAD_ITEMS}
@@ -147,33 +154,41 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
   } else if (strategy === 'va') {
     body = (
       <>
-        <Space wrap size={16}>
-          <LabeledNumber
-            label="上期目标总市值"
-            value={state.va.prevTargetValue}
-            onChange={(v) => update('va.prevTargetValue', v)}
-            addonAfter="元"
-          />
-          <LabeledNumber
-            label="每月目标增长额"
-            value={state.va.monthlyGrowth}
-            onChange={(v) => update('va.monthlyGrowth', v)}
-            addonAfter="元"
-          />
-          <LabeledNumber
-            label="上期期末实际市值"
-            value={state.va.prevEndActual}
-            onChange={(v) => update('va.prevEndActual', v)}
-            addonAfter="元"
-          />
-          <LabeledNumber
-            label="本期涨跌幅"
-            value={state.va.currentChange}
-            onChange={(v) => update('va.currentChange', v)}
-            addonAfter="%"
-          />
-          {commonMax}
-        </Space>
+        <Row gutter={[16, 16]}>
+          <FieldCol>
+            <LabeledNumber
+              label="上期目标总市值"
+              value={state.va.prevTargetValue}
+              onChange={(v) => update('va.prevTargetValue', v)}
+              addonAfter="元"
+            />
+          </FieldCol>
+          <FieldCol>
+            <LabeledNumber
+              label="每月目标增长额"
+              value={state.va.monthlyGrowth}
+              onChange={(v) => update('va.monthlyGrowth', v)}
+              addonAfter="元"
+            />
+          </FieldCol>
+          <FieldCol>
+            <LabeledNumber
+              label="上期期末实际市值"
+              value={state.va.prevEndActual}
+              onChange={(v) => update('va.prevEndActual', v)}
+              addonAfter="元"
+            />
+          </FieldCol>
+          <FieldCol>
+            <LabeledNumber
+              label="本期涨跌幅"
+              value={state.va.currentChange}
+              onChange={(v) => update('va.currentChange', v)}
+              addonAfter="%"
+            />
+          </FieldCol>
+          <FieldCol>{commonMax}</FieldCol>
+        </Row>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
           本期操作金额 = 本期目标总市值 − 本期期初实际市值（正=买入，负=卖出）。
         </Typography.Paragraph>
@@ -184,24 +199,27 @@ export default function GlobalSettings({ strategy, state, update, updateAsset }:
   } else if (strategy === 'rebalance') {
     body = (
       <>
-        <Space wrap size={16}>
-          {budget}
-          {commonMax}
-          <LabeledNumber
-            label="账户总市值(留空=自动合计)"
-            value={state.rebalance.totalValue}
-            onChange={(v) => update('rebalance.totalValue', v)}
-            addonAfter="元"
-            width={220}
-          />
-          <div className="field" style={{ minWidth: 160 }}>
-            <div className="field-label">触发全额再平衡</div>
-            <Switch
-              checked={state.rebalance.rebalanceNow}
-              onChange={(v) => update('rebalance.rebalanceNow', v)}
+        <Row gutter={[16, 16]}>
+          <FieldCol>{budget}</FieldCol>
+          <FieldCol>{commonMax}</FieldCol>
+          <FieldCol>
+            <LabeledNumber
+              label="账户总市值(留空=自动合计)"
+              value={state.rebalance.totalValue}
+              onChange={(v) => update('rebalance.totalValue', v)}
+              addonAfter="元"
             />
-          </div>
-        </Space>
+          </FieldCol>
+          <FieldCol>
+            <div className="field">
+              <div className="field-label">触发全额再平衡</div>
+              <Switch
+                checked={state.rebalance.rebalanceNow}
+                onChange={(v) => update('rebalance.rebalanceNow', v)}
+              />
+            </div>
+          </FieldCol>
+        </Row>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
           定投资金优先补足占比低于目标的资产；开启再平衡后显示各资产买卖建议。
         </Typography.Paragraph>

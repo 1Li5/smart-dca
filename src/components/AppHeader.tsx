@@ -10,7 +10,9 @@ import {
   LogoutOutlined,
   LoginOutlined,
   UserAddOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface Props {
   mode: 'light' | 'dark';
@@ -29,6 +31,7 @@ export default function AppHeader({
   mode, canCopy, onCopy, onReset, onToggleTheme,
   user, onOpenLogin, onOpenRegister, onLogout, syncStatusEl,
 }: Props) {
+  const { isMobile } = useResponsive();
   const authControl = user ? (
     <Dropdown
       menu={{
@@ -65,23 +68,46 @@ export default function AppHeader({
       </div>
       <Space className="app-actions" size={8} wrap>
         {syncStatusEl}
-        <Button
-          icon={<CopyOutlined />}
-          onClick={onCopy}
-          disabled={!canCopy}
-          title={canCopy ? '复制本期定投方案' : '介绍页无需复制'}
-        >
-          复制方案
-        </Button>
-        <Button icon={<ReloadOutlined />} onClick={onReset}>
-          重置
-        </Button>
-        <Button
-          icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-          onClick={onToggleTheme}
-        >
-          {mode === 'dark' ? '浅色' : '深色'}
-        </Button>
+        {isMobile ? (
+          <Dropdown
+            menu={{
+              items: [
+                { key: 'copy', icon: <CopyOutlined />, label: '复制方案', disabled: !canCopy, onClick: onCopy },
+                { key: 'reset', icon: <ReloadOutlined />, label: '重置', onClick: onReset },
+                {
+                  key: 'theme',
+                  icon: mode === 'dark' ? <SunOutlined /> : <MoonOutlined />,
+                  label: mode === 'dark' ? '浅色' : '深色',
+                  onClick: onToggleTheme,
+                },
+              ],
+            }}
+            trigger={['click']}
+            placement="bottomRight"
+          >
+            <Button icon={<MoreOutlined />}>更多</Button>
+          </Dropdown>
+        ) : (
+          <>
+            <Button
+              icon={<CopyOutlined />}
+              onClick={onCopy}
+              disabled={!canCopy}
+              title={canCopy ? '复制本期定投方案' : '介绍页无需复制'}
+            >
+              复制方案
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={onReset}>
+              重置
+            </Button>
+            <Button
+              icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+              onClick={onToggleTheme}
+            >
+              {mode === 'dark' ? '浅色' : '深色'}
+            </Button>
+          </>
+        )}
         {authControl}
       </Space>
     </div>

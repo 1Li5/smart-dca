@@ -303,6 +303,31 @@ body {
   color: var(--text-2);
 }
 
+/* ============ 移动端标的卡片（AssetTable xs 视图） ============ */
+.asset-card {
+  margin-bottom: 12px;
+}
+.asset-card .ant-card-head {
+  min-height: 0;
+  padding: 0 12px;
+}
+.asset-card .ant-card-head-title {
+  padding: 10px 0;
+}
+.asset-card-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 12px;
+}
+.asset-card-field {
+  min-width: 0;
+}
+.asset-card-label {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
 /* ============ 移动端 ============ */
 @media (max-width: 720px) {
   .app-content {
@@ -325,5 +350,8 @@ body {
   }
   .brand-sub {
     display: none;
+  }
+  .result-scroll .ant-table {
+    font-size: 12px;
   }
 }

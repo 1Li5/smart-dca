@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { App, AutoComplete, Button, Input, InputNumber, Select, Table } from 'antd';
+import { App, AutoComplete, Button, Card, Input, InputNumber, Select, Table } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { FIELD_DEFS, STRATEGIES } from '../lib/defaults';
 import type { Asset, AppState } from '../lib/calc';
 import { searchFund } from '../lib/fundSearch';
 import { fetchIndicator, looksLikeCode } from '../lib/indicator';
 import { AUTO_FILL_ENABLED } from '../config';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface Props {
   strategy: string;
@@ -86,8 +87,100 @@ function NameCell({
   );
 }
 
+/** 单个字段的可编辑控件：桌面表格与移动卡片共用，保证交互一致 */
+function FieldControl({
+  field,
+  row,
+  updateAsset,
+}: {
+  field: string;
+  row: Asset;
+  updateAsset: (id: string, field: string, v: any) => void;
+}) {
+  const def = FIELD_DEFS[field];
+  if (def.type === 'select') {
+    return (
+      <Select
+        value={row[field as keyof Asset]}
+        options={def.options}
+        onChange={(v) => updateAsset(row.id, field, v)}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    );
+  }
+  if (def.type === 'text') {
+    return (
+      <Input
+        value={row[field as keyof Asset] as string}
+        placeholder={def.placeholder}
+        onChange={(e) => updateAsset(row.id, field, e.target.value)}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    );
+  }
+  return (
+    <InputNumber
+      value={row[field as keyof Asset] as number}
+      step={def.step}
+      min={0}
+      onChange={(v) => updateAsset(row.id, field, v ?? 0)}
+      size="small"
+      style={{ width: '100%' }}
+    />
+  );
+}
+
+/** 移动端（xs）：每个标的一张卡片，字段纵向堆叠为标签+控件，避免表格横向滚动 */
+function AssetCard({
+  row,
+  fields,
+  updateAsset,
+  onDelete,
+  onAutoFill,
+}: {
+  row: Asset;
+  fields: string[];
+  updateAsset: (id: string, field: string, v: any) => void;
+  onDelete: (id: string) => void;
+  onAutoFill: (row: Asset, code: string) => void;
+}) {
+  const { message } = App.useApp();
+  return (
+    <Card
+      size="small"
+      className="asset-card"
+      title={<NameCell value={row.name} row={row} updateAsset={updateAsset} onAutoFill={onAutoFill} />}
+      extra={
+        <Button
+          danger
+          size="small"
+          icon={<DeleteOutlined />}
+          onClick={() => {
+            onDelete(row.id);
+            message.success('已删除标的');
+          }}
+        />
+      }
+    >
+      <div className="asset-card-fields">
+        {fields
+          .filter((f) => f !== 'name')
+          .map((f) => (
+            <div className="asset-card-field" key={f}>
+              <div className="asset-card-label">{FIELD_DEFS[f].label}</div>
+              <FieldControl field={f} row={row} updateAsset={updateAsset} />
+            </div>
+          ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function AssetTable({ strategy, state, updateAsset, onAdd, onDelete }: Props) {
   const { message } = App.useApp();
+  const { isMobile } = useResponsive();
   const meta = STRATEGIES.find((s) => s.id === strategy)!;
   const fields = meta.assetFields;
 
@@ -142,40 +235,7 @@ export default function AssetTable({ strategy, state, updateAsset, onAdd, onDele
         dataIndex: f,
         key: f,
         align: 'right',
-        render: (val: any, row: Asset) => {
-          if (def.type === 'select') {
-            return (
-              <Select
-                value={val}
-                options={def.options}
-                onChange={(v) => updateAsset(row.id, f, v)}
-                size="small"
-                style={{ width: '100%' }}
-              />
-            );
-          }
-          if (def.type === 'text') {
-            return (
-              <Input
-                value={val}
-                placeholder={def.placeholder}
-                onChange={(e) => updateAsset(row.id, f, e.target.value)}
-                size="small"
-                style={{ width: '100%' }}
-              />
-            );
-          }
-          return (
-            <InputNumber
-              value={val}
-              step={def.step}
-              min={0}
-              onChange={(v) => updateAsset(row.id, f, v ?? 0)}
-              size="small"
-              style={{ width: '100%' }}
-            />
-          );
-        },
+        render: (_: any, row: Asset) => <FieldControl field={f} row={row} updateAsset={updateAsset} />,
       };
     }),
     {
@@ -199,17 +259,32 @@ export default function AssetTable({ strategy, state, updateAsset, onAdd, onDele
 
   return (
     <div>
-      <div className="result-scroll">
-        <Table<Asset>
-          columns={columns}
-          dataSource={state.assets}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          bordered
-          scroll={{ x: 'max-content' }}
-        />
-      </div>
+      {isMobile ? (
+        <div className="asset-cards">
+          {state.assets.map((row) => (
+            <AssetCard
+              key={row.id}
+              row={row}
+              fields={fields}
+              updateAsset={updateAsset}
+              onDelete={onDelete}
+              onAutoFill={doAutoFill}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="result-scroll">
+          <Table<Asset>
+            columns={columns}
+            dataSource={state.assets}
+            rowKey="id"
+            pagination={false}
+            size="small"
+            bordered
+            scroll={{ x: 'max-content' }}
+          />
+        </div>
+      )}
       <Button type="dashed" icon={<PlusOutlined />} onClick={onAdd} style={{ marginTop: 12, width: '100%' }}>
         新增标的
       </Button>
