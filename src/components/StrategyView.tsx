@@ -4,6 +4,7 @@ import type { AppState, StrategyResult } from '../lib/calc';
 import GlobalSettings from './GlobalSettings';
 import AssetTable from './AssetTable';
 import ResultTable from './ResultTable';
+import ResultCharts from './ResultCharts';
 import ComparePanel from './ComparePanel';
 import { AUTO_FILL_ENABLED } from '../config';
 
@@ -67,6 +68,10 @@ export default function StrategyView({
 
       <Card title="计算结果" extra={<span className="card-tag">自动校验 · 状态高亮</span>}>
         <ResultTable result={result} />
+      </Card>
+
+      <Card title="结果可视化" extra={<span className="card-tag">本地 SVG 图表 · 零依赖</span>}>
+        <ResultCharts result={result} state={state} />
       </Card>
 
       {COMPARABLE.includes(strategy) && (
