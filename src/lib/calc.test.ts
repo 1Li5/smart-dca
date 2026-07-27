@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { runStrategy } from './calc';
+import { runStrategy, runBacktest, rollingMA30, rollingPercentile } from './calc';
 import { DEFAULT_STATE, makeAsset } from './defaults';
-import type { AppState, Asset } from './calc';
+import type { AppState, Asset, MonthlyPoint, BacktestResult } from './calc';
 
 function cloneState(): AppState {
   return structuredClone(DEFAULT_STATE);
@@ -504,5 +504,75 @@ describe('批次D 再平衡频率 frequency 透传', () => {
     const resBase = runStrategy('rebalance', rbFreq('monthly'));
     const resQ = runStrategy('rebalance', rbFreq('quarterly'));
     expect(resQ.rows.map((r) => r.alloc)).toEqual(resBase.rows.map((r) => r.alloc));
+  });
+});
+
+// ====================================================================
+// 批次 E：历史回测（runBacktest / rollingMA30 / rollingPercentile）
+// 合成确定性月线，验证空序列、position / percentile / va 不抛错且指标有限。
+// ====================================================================
+describe('runBacktest 历史回测', () => {
+  const s1: MonthlyPoint[] = [
+    { date: '2020-01', close: 100 },
+    { date: '2020-02', close: 110 },
+    { date: '2020-03', close: 90 },
+    { date: '2020-04', close: 120 },
+    { date: '2020-05', close: 105 },
+  ];
+
+  it('工具函数：rollingMA30 窗口均值 / rollingPercentile 价格分位', () => {
+    expect(rollingMA30(s1, 0)).toBeCloseTo(100, 5);
+    expect(rollingMA30(s1, 4)).toBeCloseTo((100 + 110 + 90 + 120 + 105) / 5, 5);
+    expect(rollingPercentile(s1, 0)).toBe(100); // 仅自身 ≤ 当前价
+    expect(rollingPercentile(s1, 2)).toBeCloseTo(33.33, 1); // price=90, ≤90 仅 1 个 / 3
+  });
+
+  it('空 seriesMap：返回空 points、warnings 含「无可用历史月线」、不抛错', () => {
+    const s = cloneState();
+    const res = runBacktest('position', s, {});
+    expect(res.points).toEqual([]);
+    expect(res.warnings.some((w) => w.includes('无可用历史月线'))).toBe(true);
+  });
+
+  it('position 策略：points 长度=5、invested 单调不减、收益/超额为有限数', () => {
+    const s = cloneState();
+    s.monthlyBudget = 5000;
+    s.maxSingleAmount = 0;
+    s.assets = [mkAsset('测试', { code: 'TEST', currentPrice: 100, ma30: 100 })];
+    const seriesMap: Record<string, MonthlyPoint[]> = { [s.assets[0].id]: s1 };
+    const res = runBacktest('position', s, seriesMap);
+    expect(res.points.length).toBe(5);
+    for (let i = 1; i < res.points.length; i++) {
+      expect(res.points[i].invested).toBeGreaterThanOrEqual(res.points[i - 1].invested);
+    }
+    expect(Number.isFinite(res.summary.finalValue)).toBe(true);
+    expect(Number.isFinite(res.summary.totalReturnPct)).toBe(true);
+    expect(Number.isFinite(res.summary.vsBuyHoldPct)).toBe(true);
+  });
+
+  it('percentile 策略：低估月投入 > 高估月投入（多投低估）', () => {
+    const s = cloneState();
+    s.monthlyBudget = 5000;
+    // 前段走高（高/极高分位），末月急跌（低分位）
+    const series: MonthlyPoint[] = [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 40].map((c, i) => ({
+      date: `2020-${String(i + 1).padStart(2, '0')}`,
+      close: c,
+    }));
+    s.assets = [mkAsset('测试', { code: 'TEST', baseAmount: 1000, currentPrice: 50, ma30: 50 })];
+    const seriesMap: Record<string, MonthlyPoint[]> = { [s.assets[0].id]: series };
+    const res = runBacktest('percentile', s, seriesMap);
+    const lowIdx = 11; // price=40 → 低分位
+    const highIdx = 10; // price=100 → 极高分位
+    expect(res.points[lowIdx].monthlyAmount).toBeGreaterThan(res.points[highIdx].monthlyAmount);
+  });
+
+  it('va 策略：不抛错、points 长度=5、value 有限', () => {
+    const s = cloneState();
+    s.assets = [mkAsset('测试', { code: 'TEST', currentPrice: 100, ma30: 100 })];
+    const seriesMap: Record<string, MonthlyPoint[]> = { [s.assets[0].id]: s1 };
+    const res = runBacktest('va', s, seriesMap);
+    expect(res.points.length).toBe(5);
+    expect(Number.isFinite(res.summary.finalValue)).toBe(true);
+    expect(Number.isFinite(res.points[res.points.length - 1].value)).toBe(true);
   });
 });

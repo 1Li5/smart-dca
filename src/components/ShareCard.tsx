@@ -6,7 +6,7 @@ import { fmtMoney, fmtNum, fmtPct, fmtSigned, type StrategyResult, type AppState
  * 红涨绿跌：低估/买入=红(#cf1322)，高估/卖出=绿(#389e0d)，极度=橙，正常/持有=灰。
  */
 
-const RISK_TEXT = '基金有风险，投资需谨慎。测算结果仅供参考，不构成投资建议。';
+export const RISK_TEXT = '基金有风险，投资需谨慎。测算结果仅供参考，不构成投资建议。';
 
 const STATUS_COLOR: Record<string, string> = {
   low: '#cf1322',

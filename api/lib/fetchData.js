@@ -177,4 +177,42 @@ async function getIndicator(code, type) {
   }
 }
 
-export { getIndicator, getFundIndicator, getIndexIndicator, resolveSinaSymbol };
+/**
+ * 取某标的（基金/指数）的完整历史月线，用于回测。
+ * @param {string} code 基金代码 或 指数/ETF 代码
+ * @param {'auto'|'fund'|'index'} type
+ * @returns {Promise<Array<{date:string, close:number}>>} 升序月线 [{date:'YYYY-MM', close}]
+ */
+async function getMonthlySeries(code, type = 'auto') {
+  if (!code) throw new Error('缺少 code 参数');
+  code = String(code).trim();
+
+  const fetchFund = async () => {
+    const nav = await fetchFundNavFull(code);
+    if (!nav.length) throw new Error('基金净值空数据');
+    return toMonthly(nav).map((m) => ({ date: m.date, close: Number(m.close) }));
+  };
+  const fetchIndex = async () => {
+    const symbol = resolveSinaSymbol(code);
+    if (!symbol) throw new Error('无法解析指数代码: ' + code);
+    // 指数/ETF 取 2400 日 ≈ 10 年，回测样本更充分
+    const daily = await fetchSinaDaily(symbol, 2400);
+    if (!daily.length) throw new Error('日线空数据');
+    return toMonthly(daily).map((m) => ({ date: m.date, close: Number(m.close) }));
+  };
+
+  if (type === 'fund') return await fetchFund();
+  if (type === 'index') return await fetchIndex();
+  // auto: 先试基金（6 位代码多为基金），失败再试指数
+  try {
+    return await fetchFund();
+  } catch (e1) {
+    try {
+      return await fetchIndex();
+    } catch (e2) {
+      throw new Error('无法获取月线（基金/指数均失败）：' + e1.message + ' | ' + e2.message);
+    }
+  }
+}
+
+export { getIndicator, getFundIndicator, getIndexIndicator, getMonthlySeries, resolveSinaSymbol };

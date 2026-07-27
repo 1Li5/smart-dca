@@ -578,3 +578,276 @@ function assetName(state: AppState, id: string): string {
   const a = (state.assets || []).find((x) => x.id === id);
   return a ? a.name : '';
 }
+
+// ====================================================================
+// 批次 E：历史回测（净值曲线 + 组合对比）
+// 以下为新增的独立纯函数，上方 6 个核心策略函数（calcPosition 等）一行未改。
+// 回测为简化模型：用历史月线逐月回放各策略的「当期定投金额」，统一按
+// 「金额→份额」累积，与固定月定投 / 一次性买入做组合对比。
+// ====================================================================
+
+export interface MonthlyPoint {
+  date: string;
+  close: number;
+}
+export interface BacktestPoint {
+  date: string;
+  invested: number;
+  value: number;
+  monthlyAmount: number;
+}
+export interface BacktestResult {
+  strategy: string;
+  months: string[];
+  points: BacktestPoint[]; // 策略定投
+  buyHold: BacktestPoint[]; // 固定月定投
+  lumpSum?: BacktestPoint[]; // 一次性买入
+  summary: {
+    totalInvested: number;
+    finalValue: number;
+    totalReturnPct: number;
+    vsBuyHoldPct: number;
+    maxDrawdownPct: number;
+    bestYear?: { year: string; ret: number };
+    worstYear?: { year: string; ret: number };
+  };
+  warnings: string[];
+}
+
+/** 截至 idx 的滚动 30 月均值（不足 30 取已有窗口均值） */
+export function rollingMA30(series: MonthlyPoint[], idx: number): number {
+  if (!series || !series.length) return 0;
+  const start = Math.max(0, idx - 29);
+  let sum = 0;
+  let n = 0;
+  for (let i = start; i <= idx; i++) {
+    const c = num(series[i]?.close);
+    if (isFinite(c)) {
+      sum += c;
+      n += 1;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+/** 截至 idx 的价格分位（≤当前价月数 / (idx+1) ×100，两位小数） */
+export function rollingPercentile(series: MonthlyPoint[], idx: number): number {
+  if (!series || !series.length) return 0;
+  const cur = num(series[idx]?.close);
+  const count = series.slice(0, idx + 1).filter((p) => num(p.close) <= cur).length;
+  const pct = (count / (idx + 1)) * 100;
+  return Math.round(pct * 100) / 100;
+}
+
+/**
+ * 历史回测主函数。
+ * @param strategy 6 类策略之一（position/percentile/ladder/va/grid/rebalance）
+ * @param state    当前 AppState（参数、资产列表）
+ * @param seriesMap 各资产 id → 历史月线（来自 /api/series）
+ */
+export function runBacktest(
+  strategy: string,
+  state: AppState,
+  seriesMap: Record<string, MonthlyPoint[]>
+): BacktestResult {
+  const emptySummary = {
+    totalInvested: 0,
+    finalValue: 0,
+    totalReturnPct: 0,
+    vsBuyHoldPct: 0,
+    maxDrawdownPct: 0,
+  };
+
+  const warnings: string[] = [];
+
+  // 1. 收集有效资产（有 code 且 seriesMap 中有非空序列）
+  const validAssets: Asset[] = [];
+  for (const a of state.assets || []) {
+    const hasCode = !!a.code && String(a.code).trim().length > 0;
+    const series = hasCode ? seriesMap[a.id] : undefined;
+    if (!hasCode || !series || series.length === 0) {
+      warnings.push(`${a.name || '(未命名)'} 无代码或行情获取失败，已跳过`);
+      continue;
+    }
+    validAssets.push(a);
+  }
+
+  if (validAssets.length === 0) {
+    warnings.push('无可用历史月线');
+    return { strategy, months: [], points: [], buyHold: [], summary: emptySummary, warnings };
+  }
+
+  // 2. 全局月轴 = 各有效资产月集合的交集（升序）
+  const priceMap: Record<string, Map<string, number>> = {};
+  let monthSet: Set<string> | null = null;
+  for (const a of validAssets) {
+    const s = seriesMap[a.id];
+    const m = new Map<string, number>();
+    for (const p of s) m.set(p.date, num(p.close));
+    priceMap[a.id] = m;
+    const set = new Set<string>(m.keys());
+    if (monthSet === null) {
+      monthSet = set;
+    } else {
+      const next = new Set<string>();
+      for (const d of monthSet) if (set.has(d)) next.add(d);
+      monthSet = next;
+    }
+  }
+  const months = [...(monthSet as Set<string>)].sort();
+  if (months.length === 0) {
+    warnings.push('各标的月线无重叠区间，无法回测');
+    return { strategy, months: [], points: [], buyHold: [], summary: emptySummary, warnings };
+  }
+
+  // 3. blended 指数价（等权平均）：固定月定投/一次买入基线，及 VA 代理单位
+  const idxPrice: number[] = months.map((m) => {
+    let sum = 0;
+    let n = 0;
+    for (const a of validAssets) {
+      const p = priceMap[a.id].get(m);
+      if (p != null && p > 0) {
+        sum += p;
+        n += 1;
+      }
+    }
+    return n > 0 ? sum / n : 0;
+  });
+
+  const shares: Record<string, number> = {};
+  validAssets.forEach((a) => (shares[a.id] = 0));
+  let vaShares = 0; // VA 专用：以 blended 指数价作代理单位
+  let invested = 0; // 累计正流入
+
+  const points: BacktestPoint[] = [];
+  const buyHold: BacktestPoint[] = [];
+  const lumpSum: BacktestPoint[] = [];
+  let bhShares = 0;
+  const N = months.length;
+  const budget = num(state.monthlyBudget);
+  let lsShares = 0;
+  let lsInit = 0;
+
+  for (let k = 0; k < N; k++) {
+    const m = months[k];
+
+    // 构造当月 workingState
+    const workingState: AppState = JSON.parse(JSON.stringify(state));
+    for (const a of validAssets) {
+      const s = seriesMap[a.id];
+      const idx = s.findIndex((p) => p.date === m);
+      const close = num(s[idx]?.close);
+      const target = workingState.assets.find((x) => x.id === a.id)!;
+      target.currentPrice = close;
+      target.ma30 = rollingMA30(s, idx);
+      if (strategy === 'percentile') target.percentile = rollingPercentile(s, idx);
+    }
+
+    const res = runStrategy(strategy, workingState);
+    const isVA = strategy === 'va';
+
+    let monthlyAmount = 0;
+    if (isVA) {
+      const amt = num(res.rows && res.rows[0] ? res.rows[0].amount : 0);
+      const ip = idxPrice[k];
+      if (ip > 0) {
+        vaShares += amt / ip;
+        monthlyAmount = amt;
+        if (amt > 0) invested += amt;
+      }
+    } else {
+      const byName: Record<string, number> = {};
+      (res.rows || []).forEach((r) => {
+        byName[r.name] = num(r.amount);
+      });
+      for (const a of validAssets) {
+        const amt = byName[a.name] || 0;
+        const price = priceMap[a.id].get(m) || 0;
+        if (amt > 0 && price > 0) {
+          shares[a.id] += amt / price;
+          invested += amt;
+          monthlyAmount += amt;
+        }
+      }
+    }
+
+    // 策略组合市值
+    let value = 0;
+    if (isVA) {
+      value = idxPrice[k] > 0 ? vaShares * idxPrice[k] : 0;
+    } else {
+      for (const a of validAssets) {
+        const price = priceMap[a.id].get(m) || 0;
+        value += shares[a.id] * price;
+      }
+    }
+    points.push({ date: m, invested: round2(invested), value: round2(value), monthlyAmount: round2(monthlyAmount) });
+
+    // 4. 固定月定投基线
+    const ip = idxPrice[k];
+    if (ip > 0) bhShares += budget / ip;
+    const bhInvested = budget * (k + 1);
+    const bhValue = ip > 0 ? bhShares * ip : 0;
+    buyHold.push({ date: m, invested: round2(bhInvested), value: round2(bhValue), monthlyAmount: round2(budget) });
+
+    // 5. 一次性买入基线（首月投入 monthlyBudget × N）
+    if (k === 0) {
+      lsInit = budget * N;
+      lsShares = ip > 0 ? lsInit / ip : 0;
+    }
+    const lsValue = ip > 0 ? lsShares * ip : 0;
+    lumpSum.push({ date: m, invested: round2(lsInit), value: round2(lsValue), monthlyAmount: round2(k === 0 ? lsInit : 0) });
+  }
+
+  // 6. 指标汇总
+  const finalValue = points.length ? points[points.length - 1].value : 0;
+  const totalInvested = points.length ? points[points.length - 1].invested : 0;
+  const bhFinal = buyHold.length ? buyHold[buyHold.length - 1].value : 0;
+  const totalReturnPct = (finalValue - totalInvested) / Math.max(totalInvested, 1) * 100;
+  const vsBuyHoldPct = bhFinal > 0 ? (finalValue / bhFinal - 1) * 100 : 0;
+
+  // 最大回撤
+  let peak = -Infinity;
+  let maxDD = 0;
+  for (const p of points) {
+    if (p.value > peak) peak = p.value;
+    if (peak > 0) {
+      const dd = ((peak - p.value) / peak) * 100;
+      if (dd > maxDD) maxDD = dd;
+    }
+  }
+
+  // 年度收益（按自然年：年末 value / 上年末 value - 1）
+  const yearMap: Record<string, number> = {};
+  points.forEach((p) => {
+    yearMap[p.date.slice(0, 4)] = p.value;
+  });
+  const years = Object.keys(yearMap).sort();
+  let bestYear: { year: string; ret: number } | undefined;
+  let worstYear: { year: string; ret: number } | undefined;
+  for (let i = 0; i < years.length; i++) {
+    const y = years[i];
+    const base = i === 0 ? points[0].value : yearMap[years[i - 1]];
+    const ret = base > 0 ? (yearMap[y] / base - 1) * 100 : 0;
+    if (bestYear === undefined || ret > bestYear.ret) bestYear = { year: y, ret };
+    if (worstYear === undefined || ret < worstYear.ret) worstYear = { year: y, ret };
+  }
+
+  return {
+    strategy,
+    months,
+    points,
+    buyHold,
+    lumpSum,
+    summary: {
+      totalInvested: round2(totalInvested),
+      finalValue: round2(finalValue),
+      totalReturnPct: round2(totalReturnPct),
+      vsBuyHoldPct: round2(vsBuyHoldPct),
+      maxDrawdownPct: round2(maxDD),
+      bestYear,
+      worstYear,
+    },
+    warnings,
+  };
+}

@@ -40,7 +40,7 @@ export const FIELD_DEFS: Record<string, FieldDef> = {
   takeProfitPrice: { key: 'takeProfitPrice', label: '目标止盈价', type: 'number', step: 'any', placeholder: '0=未设' },
 };
 
-export type StrategyKind = 'intro' | 'asset' | 'account';
+export type StrategyKind = 'intro' | 'asset' | 'account' | 'backtest';
 
 export interface StrategyMeta {
   id: string;
@@ -119,6 +119,14 @@ export const STRATEGIES: StrategyMeta[] = [
     desc: '预设多资产目标比例，定投优先补足低配，可触发全额再平衡',
     kind: 'asset',
     assetFields: ['name', 'currentValue', 'targetRatio'],
+  },
+  {
+    id: 'backtest',
+    name: '回测分析',
+    short: '回测',
+    desc: '基于历史月线回测各策略净值表现（简化模型，仅供参考）',
+    kind: 'backtest',
+    assetFields: [],
   },
 ];
 

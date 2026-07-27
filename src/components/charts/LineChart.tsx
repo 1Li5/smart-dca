@@ -22,6 +22,8 @@ export interface LineChartProps {
   colors?: ChartColors;
   /** 是否在上方显示图例 */
   legend?: boolean;
+  /** 可选的 x 轴月标签（长度需与序列点数一致），按首/中/末等若干刻度展示 */
+  xLabels?: string[];
 }
 
 const VB_W = 640;
@@ -48,6 +50,7 @@ export default function LineChart({
   height = 260,
   colors,
   legend = true,
+  xLabels,
 }: LineChartProps) {
   const c = colors ?? chartColors('light');
   const VB_H = height;
@@ -125,6 +128,23 @@ export default function LineChart({
       {/* 坐标轴 */}
       <line x1={plotL} y1={plotT} x2={plotL} y2={plotB} stroke={c.axis} strokeWidth={1.2} />
       <line x1={plotL} y1={plotB} x2={plotR} y2={plotB} stroke={c.axis} strokeWidth={1.2} />
+      {/* x 轴月标签（首/中/末等若干刻度） */}
+      {xLabels && xLabels.length > 1 && (() => {
+        const n = xLabels.length;
+        const idxs = Array.from(new Set([0, Math.floor(n * 0.34), Math.floor(n * 0.67), n - 1]));
+        return idxs.map((i) => (
+          <text
+            key={`xl${i}`}
+            x={sx(i)}
+            y={plotB + 14}
+            textAnchor="middle"
+            fill={c.text}
+            fontSize={10}
+          >
+            {xLabels[i]}
+          </text>
+        ));
+      })()}
       {/* 折线 */}
       {datasets.map((d, di) => {
         const dStr = d.pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`).join(' ');

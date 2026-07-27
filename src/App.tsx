@@ -12,6 +12,7 @@ import { readShareFromHash, decodeShare, clearShareHash } from './lib/share';
 import AppHeader from './components/AppHeader';
 import IntroPage from './components/IntroPage';
 import StrategyView from './components/StrategyView';
+import BacktestPanel from './components/BacktestPanel';
 import AuthModal from './components/AuthModal';
 import MigrationDialog from './components/MigrationDialog';
 import SyncStatusBadge from './components/SyncStatus';
@@ -78,7 +79,7 @@ function Shell({
 
   const mode = state.theme;
   const active = state.activeStrategy;
-  const result = active !== 'intro' ? runStrategy(active, state) : null;
+  const result = active !== 'intro' && active !== 'backtest' ? runStrategy(active, state) : null;
   const strategyName = STRATEGIES.find((s) => s.id === active)?.name || active;
   const copyText = result ? result.copyLines.join('\n') : '';
 
@@ -263,6 +264,14 @@ function Shell({
     children:
       s.id === 'intro' ? (
         <IntroPage />
+      ) : s.id === 'backtest' ? (
+        <BacktestPanel
+          state={state}
+          update={update}
+          updateAsset={updateAsset}
+          onAddAsset={addAsset}
+          onDeleteAsset={deleteAsset}
+        />
       ) : (
         <StrategyView
           strategy={s.id}
